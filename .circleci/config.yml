@@ -2,6 +2,7 @@ version: 2.1
 
 orbs:
   python: circleci/python@2.1.1
+  aws-cli: circleci/aws-cli@3.1.3
 
 jobs:
   build-and-test:
@@ -29,11 +30,38 @@ jobs:
       - run:
           name: add src to Zipfile
           command: zip -g ./function.zip -r src
+      - persist_to_workspace:
+          root: .
+          paths:
+            - function.zip
+
+  deploy-dev:
+    executor: aws-cli/default
+    steps:
+      - attach_workspace:
+          at: ./
+      - aws-cli/setup:
+          aws-region: AWS_DEFAULT_REGION
+          aws-access-key-id: AWS_ACCESS_KEY_ID
+          aws-secret-access-key: AWS_SECRET_ACCESS_KEY
+      - run:
+          name: Upload to S3
+          command: aws s3 cp function.zip s3://fastapi-simple/function.zip
+      - run:
+          name: Deploy new Lambda
+          command: aws lambda update-function-code --function-name fastapi-simple --s3-bucket fastapi-simple --s3-key function.zip
 
 workflows:
   build-test-and-deploy:
     jobs:
       - build-and-test:
+          filters:
+            branches:
+              only:
+                - cicd
+      - deploy-dev:
+          requires:
+            - build-and-test
           filters:
             branches:
               only:
